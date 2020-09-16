@@ -12,8 +12,21 @@ import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.http.HttpHost;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import java.io.IOException;
 import java.io.InputStream;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Properties;
 
@@ -66,9 +79,9 @@ public class HttpTokenUtil {
         return result;
     }
 
-    public static void main(String[] args) {
-        System.out.println(getToken());
-    }
+//    public static void main(String[] args) {
+//        System.out.println(getToken());
+//    }
 
     static {
         Properties prop = new Properties();
@@ -82,6 +95,88 @@ public class HttpTokenUtil {
             System.out.println("error:");
         }
 
+    }
+
+    public static void main(String[] args) {
+//        String url = "https://sso.pinming.cn/sso/login/jsonp.do?userName=782351&password=e10adc3949ba59abbe56e057f20f883e&appKey=2c948cc973c802cb0173e205961b423e&validExpire=1";
+        String s = HttpPing("sso.pinming.cn",
+                "/sso/login/jsonp.do?userName=782351&password=e10adc3949ba59abbe56e057f20f883e&appKey=2c948cc973c802cb0173e205961b423e&validExpire=1",
+                "10.203.86.156",
+                "https");
+        System.out.println("111111:" + s);
+    }
+
+    public static String HttpPing(String dns, String uri, String qlb, String scheme) {
+        String url = scheme + "://" + dns + uri;
+        CloseableHttpClient httpclient = null;
+        if (scheme.equals("http")) {
+            httpclient = getHttpClient(qlb);
+        } else if (scheme.equals("https")) {
+            httpclient = getHttpsClient(qlb);
+        } else {
+            return null;
+        }
+        HttpGet httpGet = new HttpGet(url);
+        CloseableHttpResponse httpResp = null;
+        try {
+            httpResp = httpclient.execute(httpGet);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try {
+            int statusCode = httpResp.getStatusLine().getStatusCode();
+            if (statusCode == org.apache.http.HttpStatus.SC_OK) {
+                return EntityUtils.toString(httpResp.getEntity(), "UTF-8");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                httpResp.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
+    }
+
+    private static CloseableHttpClient getHttpClient(String qlb) {
+        HttpHost proxy = new HttpHost(qlb, 80, "http");
+        //把代理设置到请求配置
+        RequestConfig defaultRequestConfig = RequestConfig.custom()
+                .setProxy(proxy)
+                .build();
+        CloseableHttpClient httpclient = HttpClients.custom().setDefaultRequestConfig(defaultRequestConfig).build();
+        return httpclient;
+    }
+
+    private static CloseableHttpClient getHttpsClient(String qlb) {//这里设置客户端不检测服务器ssl证书
+        try {
+            X509TrustManager x509mgr = new X509TrustManager() {
+                public void checkClientTrusted(X509Certificate[] xcs, String string) {
+                }
+
+                public void checkServerTrusted(X509Certificate[] xcs, String string) {
+                }
+
+                public X509Certificate[] getAcceptedIssuers() {
+                    return null;
+                }
+            };
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+            sslContext.init(null, new TrustManager[]{x509mgr}, null);
+            SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext, SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
+//            HttpHost proxy = new HttpHost(qlb, 443, "https");
+//            RequestConfig defaultRequestConfig = RequestConfig.custom()
+//                    .setProxy(proxy)
+//                    .build();
+//            CloseableHttpClient httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).setDefaultRequestConfig(defaultRequestConfig).build();
+            CloseableHttpClient httpclient = HttpClients.custom().setSSLSocketFactory(sslsf).build();
+            return httpclient;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }
 
